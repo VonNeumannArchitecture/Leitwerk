@@ -61,6 +61,8 @@ begin
             STATE <= Z0;
             case STATE is
                 when Z0 => --- opcode fetch
+                    Adressbus <= BEFEHLSZAEHLER;
+                    BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1; --geht das ?, kann in OpCode Fetch ODER in Decode Cycle stehen
                     STATE <= Z1;
                 when Z1 => --- decode
                     STATE <= Z2;
