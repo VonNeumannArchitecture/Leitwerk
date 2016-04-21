@@ -33,8 +33,9 @@ use IEEE.STD_LOGIC_1164.ALL;
 
 entity LeitwerkCode is
     Port ( CLK : in STD_LOGIC;
-           DatabusRE : in STD_LOGIC_VECTOR (7 downto 0);
-           DatabusWR : out STD_LOGIC_VECTOR (7 downto 0);
+           Datenbus : in STD_LOGIC_VECTOR (7 downto 0);
+           CS_out : out STD_LOGIC;
+           WRITE_ENABLE_OUT : out STD_LOGIC;
            Adressbus : out STD_LOGIC_VECTOR (15 downto 0);
            StatusRegister : in STD_LOGIC_VECTOR (3 downto 0);
            Steuersignale : out STD_LOGIC_VECTOR (7 downto 0);
@@ -48,10 +49,39 @@ signal BEFEHLSZAEHLER : STD_LOGIC_VECTOR(15 downto 0) := Init; --schlechtes Prog
 signal Semaphor : STD_LOGIC := '0';
 type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
 signal STATE, NEXT_ST: STATE_TYPE;
+
+subtype BEFEHL_TYPE is STD_LOGIC_VECTOR(7 downto 0);
+constant NOPE: BEFEHL_TYPE:=  "10000000";
+constant LDA_kn: BEFEHL_TYPE:=  "10000001";
+constant LDA_an: BEFEHL_TYPE:=  "10000010";
+constant STA_an: BEFEHL_TYPE:=  "10000011";
+
+constant ADD_kn: BEFEHL_TYPE:=  "00001000";
+constant ADD_an: BEFEHL_TYPE:=  "00001001";
+constant SUB_kn: BEFEHL_TYPE:=  "00001010";
+constant SUB_an: BEFEHL_TYPE:=  "00001011";
+constant SHIFT_L: BEFEHL_TYPE = "00001100";
+constant SHIFT_R: BEFEHL_TYPE = "00001101";
+
+constant JMP_an: BEFEHL_TYPE:=  "00010001";
+constant JMPC_an: BEFEHL_TYPE:=  "00100010";
+constant JMPN_an: BEFEHL_TYPE:=  "00100011";
+constant JMPO_an: BEFEHL_TYPE:=  "00100100";
+constant JMPZ_an: BEFEHL_TYPE:=  "00100101";
+
+constant NOT_: BEFEHL_TYPE:=  "01000000";
+constant AND_: BEFEHL_TYPE:=  "01000010";
+constant OR_:  BEFEHL_TYPE:=  "01000011";
+
+
 begin
 --Zustandspeicher
 LWerk: process(CLK,RESET) 
 begin
+    variable Opcode : STD_LOGIC_VECTOR(7 downto 0);
+    variable HighByte: STD_LOGIC_VECTOR(7 downto 0);
+    variable Lowbyte: STD_LOGIC_VECTOR(7 downto 0);
+    variable JMP_ADRESS: STD_LOGIC(15 downto 0);
     if risng_edge(CLK) then
         if RESET = '1' then
             STATE <= Z0;
@@ -61,11 +91,33 @@ begin
             STATE <= Z0;
             case STATE is
                 when Z0 => --- opcode fetch
-                    Adressbus <= BEFEHLSZAEHLER;
-                    BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1; --geht das ?, kann in OpCode Fetch ODER in Decode Cycle stehen
+                    Adressbus <= BEFEHLSZAEHLER; --Befehlszaehler auf den Adressbus schreiben, um Speicher zu signalisieren, was man auf dem Datenbus haben möchte
+                    BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                    CS_OUT <= '0'; --?? Muss noch deklariert werden, wie es genau ausgewaehlt werden soll
+                    WRITE_ENABLE_OUT <= '1';
                     STATE <= Z1;
                 when Z1 => --- decode
+                    
+                    Opcode <= Datenbus;
+                        if Opcode(7) = '1' then
+                            case OpCode is
+                                when NOPE => --Adressbus <= BEFEHLSZAEHLER;
+                                when LDA_kn => Adressbus <= BEFEHLSZAEHLER;
+                                when LDA_an => 
+                                when STA_an =>
+                            elsif Opcode(3) = '1' then 
+                            
+                                elsif Opcode(4) = '1' then
+                                    
+                                    elsif Opcode(5) = '1' then
+                                
+                                
+                                end if;
+                            end if;
+                        end if;
+                        end case;
                     STATE <= Z2;
+                    WRITE_ENABLE_OUT <= '0';
                 when Z2 => --- operand fetch
                     STATE <= Z3;
                 when Z3 => --- execute
