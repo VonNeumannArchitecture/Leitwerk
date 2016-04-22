@@ -97,7 +97,6 @@ begin
                     WRITE_ENABLE_OUT <= '1';
                     STATE <= Z1;
                 when Z1 => --- decode
-                    
                     Opcode <= Datenbus;
                         if Opcode(7) = '1' then
                             case OpCode is
@@ -105,17 +104,35 @@ begin
                                 when LDA_kn => Adressbus <= BEFEHLSZAEHLER;
                                 when LDA_an => 
                                 when STA_an =>
-                            elsif Opcode(3) = '1' then 
-                            
-                                elsif Opcode(4) = '1' then
-                                    
-                                    elsif Opcode(5) = '1' then
-                                
-                                
-                                end if;
-                            end if;
+                                when others =>
+                            end case;
+                        elsif Opcode(3) = '1' then 
+                            case OpCode is
+                                when ADD_kn =>
+                                when ADD_an => 
+                                when SUB_kn => 
+                                when SUB_an => 
+                                when SHIFT_L => 
+                                when SHIFT_R =>
+                                when others =>
+                            end case;
+                        elsif Opcode(4) = '1' then
+                            case OpCode is
+                                when JMP_an =>
+                                when JMPC_an =>
+                                when JMPN_an =>
+                                when JMPO_an =>
+                                when JMPZ_an =>
+                                when others =>
+                            end case;
+                        elsif Opcode(5) = '1' then
+                            case OpCode is
+                                when NOT_ =>
+                                when AND_ =>
+                                when OR_ =>
+                                when others =>
+                            end case;
                         end if;
-                        end case;
                     STATE <= Z2;
                     WRITE_ENABLE_OUT <= '0';
                 when Z2 => --- operand fetch
