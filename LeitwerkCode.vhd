@@ -47,6 +47,7 @@ architecture Behavioral of LeitwerkCode is
 
 signal BEFEHLSZAEHLER : STD_LOGIC_VECTOR(15 downto 0) := Init; --schlechtes Programmieren? Eine Bit mit 16 lane die einmalig geladen wird 
 signal Semaphor : STD_LOGIC := '0';
+signal OpCodeREG: STD_LOGIC_VECTOR(7 downto 0);
 type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
 signal STATE, NEXT_ST: STATE_TYPE;
 
@@ -98,6 +99,7 @@ begin
                     STATE <= Z1;
                 when Z1 => --- decode
                     Opcode <= Datenbus;
+                    OpCodeREG <= Datenbus;
                         if Opcode(7) = '1' then
                             case OpCode is
                                 when NOPE => --Adressbus <= BEFEHLSZAEHLER;
