@@ -39,6 +39,7 @@ entity LeitwerkCode is
            Adressbus : out STD_LOGIC_VECTOR (15 downto 0);
            StatusRegister : in STD_LOGIC_VECTOR (3 downto 0);
            Steuersignale : out STD_LOGIC_VECTOR (2 downto 0);
+           WRITE_ON_DATA_BUS : out STD_LOGIC;
            RESET : in STD_LOGIC;
            Init: in STD_LOGIC_VECTOR(15 downto 0));
 end LeitwerkCode;
@@ -48,6 +49,7 @@ architecture Behavioral of LeitwerkCode is
 signal BEFEHLSZAEHLER : STD_LOGIC_VECTOR(15 downto 0) := Init; --schlechtes Programmieren? Eine Bit mit 16 lane die einmalig geladen wird 
 signal Semaphor : STD_LOGIC := '0';
 signal Semaphor2 : STD_LOGIC := '1';
+signal Counter : STD_LOGIC_VECTOR(3 downto 0) := "0000";
 signal OpCodeREG: STD_LOGIC_VECTOR(7 downto 0);
 signal HighByte: STD_LOGIC_VECTOR(7 downto 0);
 type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
@@ -143,7 +145,7 @@ begin
  -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
                 when Z2 =>
                   STATE <= Z3;
-                  --KONTROLLFLUSS BEFEHLE
+                  --KONTROLLFLUSS BEFEHLE-----------------------------------------------------------------
                   if OpCodeREG(7) = '1' then
                         case OpCodeREG is
                           when NOPE => --Adressbus <= BEFEHLSZAEHLER;
@@ -151,11 +153,20 @@ begin
                               if Semaphor = '0' then
                                   Semaphor <= '1';
                                   HighByte <= Datenbus;
-                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                                  Adressbus <= BEFEHLSZAEHLER + 1;
+                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                                  Counter <= "0000";
+                                  STATE <= Z2;
                               else
-                                  Semaphor <= '0';
-                                  LowByte := Datenbus;
-                                  Adressbus <= HighByte & LowByte; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                  if Counter = "1111" then --WarteZyklus
+                                      Semaphor <= '0';
+                                      Counter <= "0000";
+                                      LowByte := Datenbus;
+                                      Adressbus <= HighByte & LowByte; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                  else
+                                    Counter <= Counter +1;
+                                    STATE <= Z2;
+                                  end if;
                               end if;
                               
                           when LDA_kn => Steuersignale <= "000";
@@ -164,26 +175,37 @@ begin
                               if Semaphor = '0' then
                                   Semaphor <= '1';
                                   HighByte <= Datenbus;
-                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                                  Adressbus <= BEFEHLSZAEHLER + 1;
+                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                                  Counter <= "0000";
+                                  STATE <= Z2;
                               else
-                                  Semaphor <= '0';
-                                  LowByte := Datenbus;
+                                  if Counter = "1111" then
+                                      Semaphor <= '0';
+                                      Counter <= "0000";
+                                      LowByte := Datenbus;
+                                      Adressbus <= HighByte & LowByte; CS <= '0'; 
+                                      WRITE_ON_DATA_BUS <= '1';
+                                  else
+                                    Counter <= Counter +1;
+                                    STATE <= Z2;
+                                  end if;
                               end if;
                           when others => STATE <= Z0;
                       end case;
                    
-                   --ARITHMETHISCHE BEFEHLE   
+                   --ARITHMETHISCHE BEFEHLE--------------------------------------------------------------   
                   elsif OpCodeREG(3) = '1' then 
                     if  OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "101" or OpCodeREG(2 downto 0) = "110" or OpCodeREG(2 downto 0) = "111" then
                         STATE <= Z0; --Opcode wurde nicht richtig entschlüsselt
                     else
                         Steuersignale <= OpCodeREG(2 downto 0);
                     end if;
-
-                  elsif OpCodeREG(4) = '1' then --JMP BEFEHL
+                  --JMP BEFEHL----------------------------------------------------------------------------
+                  elsif OpCodeREG(4) = '1' then 
                         JMP_COND := '0'; --Unterscheidung ob ein JMP BEFEHl gemacht werden soll
                         case OpCodeReg(2 downto 0) is --Welcher JMP BEFEHL ? 
-                        when "001" => JMP_COND := '1'; 
+                            when "001" => JMP_COND := '1'; 
                             when "010" => 
                                 if C = '1' then
                                     JMP_COND := '1';
@@ -206,17 +228,25 @@ begin
                              if Semaphor = '0' then
                                  Semaphor <= '1';
                                  HighByte <= Datenbus;
-                                 BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                                 Adressbus <= BEFEHLSZAEHLER + 1;
+                                 BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                                 Counter <= "0000";
                              else
-                                 Semaphor <= '0';
-                                 LowByte <= Datenbus;
-                                 BEFEHLSZAEHLER <=  HighByte & LowByte;
+                                 if Counter = "1111" then
+                                     Semaphor <= '0';
+                                     LowByte <= Datenbus;
+                                     BEFEHLSZAEHLER <=  HighByte & LowByte;
+                                 else
+                                    STATE <= Z2;
+                                    Counter <= Counter +1;
+                                 end if;
+
                                  STATE <= Z0;
                              end if;
                           else
                             STATE <= Z0;
                           end if;
-                  --LOGISCHE BEFEHLE
+                  --LOGISCHE BEFEHLE------------------------------------------------------------------------------------
                   elsif OpCodeREG(5) = '1' then
                       if OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "001" or OpCodeREG(2 downto 0) = "010"  or OpCodeREG(2 downto 0) = "011" or OpCodeREG(2 downto 0) = "100" then
                         STATE <= Z0;
@@ -230,14 +260,17 @@ begin
                         if OpCodeReg(1 downto 0) = "10" then --Load Address
                             Steuersignale <= "000";
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
-                        
+                            WRITE_ENABLE_OUT <= '0';
                         end if;
                     end if;
                
                     BEFEHLSZAHLER <= BEFEHLSZAEHLER + 1; --Um auf den nächsten Befehl zu kommen                
                     STATE <= Z4;
+                    WRITE_ON_DATA_BUS <= '0'; --Nicht mehr erlauben auf den datenbus zu schreiben
  -----------------------------------------STORE------------------------------------------------------------------------    
                 when Z4 =>
+                    WRITE_ENABLE_OUT <= '1'; --Standard Value
+                    Counter <= "0000"; --Standard value
                     STATE <= Z0;
             end case;
         end if;
