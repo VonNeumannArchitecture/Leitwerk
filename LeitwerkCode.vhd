@@ -59,12 +59,19 @@ constant LDA_kn: BEFEHL_TYPE:=  "10000001";
 constant LDA_an: BEFEHL_TYPE:=  "10000010";
 constant STA_an: BEFEHL_TYPE:=  "10000011";
 
-constant ADD_kn: BEFEHL_TYPE:=  "00001000";
-constant ADD_an: BEFEHL_TYPE:=  "00001001";
-constant SUB_kn: BEFEHL_TYPE:=  "00001010";
-constant SUB_an: BEFEHL_TYPE:=  "00001011";
-constant SHIFT_L: BEFEHL_TYPE := "00001100";
-constant SHIFT_R: BEFEHL_TYPE := "00001101";
+
+
+constant SHIFT_R: BEFEHL_TYPE := "00001001";
+constant SHIFT_L: BEFEHL_TYPE := "00001010";
+constant ADD_kn: BEFEHL_TYPE:=  "00001011";
+constant SUB_kn: BEFEHL_TYPE:=  "00001100"; 
+
+--000,101,110,111
+
+--unbenutzt:
+constant ADD_an: BEFEHL_TYPE:=  "00001101"; 
+constant SUB_an: BEFEHL_TYPE:=  "00001110";
+
 
 constant JMP_an: BEFEHL_TYPE:=  "00010001";
 constant JMPC_an: BEFEHL_TYPE:=  "00100010";
@@ -72,10 +79,11 @@ constant JMPN_an: BEFEHL_TYPE:=  "00100011";
 constant JMPO_an: BEFEHL_TYPE:=  "00100100";
 constant JMPZ_an: BEFEHL_TYPE:=  "00100101";
 
-constant NOT_: BEFEHL_TYPE:=  "01000000";
-constant AND_: BEFEHL_TYPE:=  "01000010";
-constant OR_:  BEFEHL_TYPE:=  "01000011";
+constant NOT_: BEFEHL_TYPE:=  "01000111";
+constant AND_: BEFEHL_TYPE:=  "01000101";
+constant OR_:  BEFEHL_TYPE:=  "01000110";
 
+--000,001,010,011,100,
 
 begin
 --Zustandspeicher
@@ -107,14 +115,10 @@ begin
                     STATE <= Z2;
                     Opcode <= Datenbus;
                     OpCodeREG <= Datenbus;
-                        if Opcode(7) = '1' then
-                            case OpCode is
-                                when NOPE => --Adressbus <= BEFEHLSZAEHLER;
-                                when LDA_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
-                                when LDA_an => Adressbus <= BEFEHLSAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
-                                when STA_an => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
-                                when others => STATE <= Z0;
-                            end case;
+                        if Opcode(7) = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
+                            if OpCode(0) or OpCode(1) then
+                                Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                             end if;
                         elsif Opcode(3) = '1' then 
                             case OpCode is
                                 when ADD_kn =>Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
@@ -138,6 +142,8 @@ begin
                     WRITE_ENABLE_OUT <= '0';
  -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
                 when Z2 =>
+                  STATE <= Z3;
+                  --KONTROLLFLUSS BEFEHLE
                   if OpCodeREG(7) = '1' then
                         case OpCodeREG is
                           when NOPE => --Adressbus <= BEFEHLSZAEHLER;
@@ -165,16 +171,15 @@ begin
                               end if;
                           when others => STATE <= Z0;
                       end case;
-                      STATE <= Z3;
+                   
+                   --ARITHMETHISCHE BEFEHLE   
                   elsif OpCodeREG(3) = '1' then 
-                      case OpCodeREG is                      
-                          when SHIFT_R => Steuersignale <= "001";
-                          when SHIFT_L => Steuersignale <= "010";
-                          when ADD_kn => Steuersignale <= "011";
-                          when SUB_kn => Steuersignale <= "100";
-                          when others => STATE <= Z0;
-                      end case;
-                      STATE <= Z3;
+                    if  OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "101" or OpCodeREG(2 downto 0) = "110" or OpCodeREG(2 downto 0) = "111" then
+                        STATE <= Z0; --Opcode wurde nicht richtig entschlüsselt
+                    else
+                        Steuersignale <= OpCodeREG(2 downto 0);
+                    end if;
+
                   elsif OpCodeREG(4) = '1' then --JMP BEFEHL
                         JMP_COND := '0'; --Unterscheidung ob ein JMP BEFEHl gemacht werden soll
                         case OpCodeReg(2 downto 0) is --Welcher JMP BEFEHL ? 
@@ -211,15 +216,13 @@ begin
                           else
                             STATE <= Z0;
                           end if;
-
+                  --LOGISCHE BEFEHLE
                   elsif OpCodeREG(5) = '1' then
-                      case OpCodeREG is           
-                          when AND_ => Steuersignale <= "101";
-                          when OR_ => Steuersignale <= "110";
-                          when NOT_ => Steuersignale <= "111";
-                          when others => STATE <= Z0;
-                      end case;
-                      STATE <= Z3;
+                      if OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "001" or OpCodeREG(2 downto 0) = "010"  or OpCodeREG(2 downto 0) = "011" or OpCodeREG(2 downto 0) = "100" then
+                        STATE <= Z0;
+                      else
+                        Steuersignale <= OpCodeREG(2 downto 0);
+                      end if;
                   end if;         
  -----------------------------------------EXECUTE------------------------------------------------------------------------                  
                 when Z3 =>
@@ -230,9 +233,7 @@ begin
                         
                         end if;
                     end if;
-                
-                
-                
+               
                     BEFEHLSZAHLER <= BEFEHLSZAEHLER + 1; --Um auf den nächsten Befehl zu kommen                
                     STATE <= Z4;
  -----------------------------------------STORE------------------------------------------------------------------------    
