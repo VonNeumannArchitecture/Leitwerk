@@ -38,7 +38,7 @@ entity LeitwerkCode is
            WRITE_ENABLE_OUT : out STD_LOGIC;
            Adressbus : out STD_LOGIC_VECTOR (15 downto 0);
            StatusRegister : in STD_LOGIC_VECTOR (3 downto 0);
-           Steuersignale : out STD_LOGIC_VECTOR (7 downto 0);
+           Steuersignale : out STD_LOGIC_VECTOR (2 downto 0);
            RESET : in STD_LOGIC;
            Init: in STD_LOGIC_VECTOR(15 downto 0));
 end LeitwerkCode;
@@ -85,7 +85,7 @@ variable Opcode: STD_LOGIC_VECTOR(7 downto 0);
 --variable HighByte: STD_LOGIC_VECTOR(7 downto 0);
 variable Lowbyte: STD_LOGIC_VECTOR(7 downto 0);
 variable JMP_ADRESS: STD_LOGIC(15 downto 0);
-
+variable JMP_COND: STD_LOGIC;
 begin
     if risng_edge(CLK) then
         if RESET = '1' then
@@ -104,155 +104,136 @@ begin
                     STATE <= Z1;
  -----------------------------------------DECODE------------------------------------------------------------------------
                 when Z1 =>
+                    STATE <= Z2;
                     Opcode <= Datenbus;
                     OpCodeREG <= Datenbus;
                         if Opcode(7) = '1' then
                             case OpCode is
                                 when NOPE => --Adressbus <= BEFEHLSZAEHLER;
-                                when LDA_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0';--active LOW chip select --Daten holen
-                               -- when LDA_an => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; --Adresse holen 
-                                when STA_an => 
-                                when others =>
+                                when LDA_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                when LDA_an => Adressbus <= BEFEHLSAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                when STA_an => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                when others => STATE <= Z0;
                             end case;
                         elsif Opcode(3) = '1' then 
                             case OpCode is
-                                when ADD_kn =>Adressbus <= BEFEHLSZAEHLER; CS <= '0';
-                                --when ADD_an => 
-                                when SUB_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0';
-                                --when SUB_an => 
-                                -----???
-                                when SHIFT_L =>
-                                when SHIFT_R => 
-                                when others =>
+                                when ADD_kn =>Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                when SUB_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                --Shift Befehl ist hier schon im Operand - Fetch / Execulte --> Signal kann also direkt übergeben werden an das Rechenwerk, genauso wie bei NOT
+                                when SHIFT_R => Steuersignale <= "001";  STATE <= Z3;
+                                when SHIFT_L => Steuersignale <= "010";  STATE <= Z3;
+                                when others => STATE <= Z0;
                             end case;
                         elsif Opcode(4) = '1' then
                             Adressbus <= BEFEHLSZAEHLER;
-                            BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
---                            case OpCode is
---                                when JMP_an => Adressbus <= BEFEHLSZAEHLER;
---                                when JMPC_an => Adressbus <= BEFEHLSZAEHLER;
---                                when JMPN_an => Adressbus <= BEFEHLSZAEHLER;
---                                when JMPO_an => Adressbus <= BEFEHLSZAEHLER;
---                                when JMPZ_an => Adressbus <= BEFEHLSZAEHLER;
---                                when others => Adressbus <= BEFEHLSZAEHLER;
---                            end case;
                         elsif Opcode(5) = '1' then
                             case OpCode is
-                                when NOT_ =>
-                                when AND_ =>
-                                when OR_ =>
+                                when NOT_ => Steuersignale <= "111"; 
+                                when AND_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                when OR_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
                                 when others => STATE <= Z0;
                             end case;
                         end if;
-                    STATE <= Z2;
+                    
                     WRITE_ENABLE_OUT <= '0';
  -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
                 when Z2 =>
                   if OpCodeREG(7) = '1' then
-                      case OpCodeREG is
+                        case OpCodeREG is
                           when NOPE => --Adressbus <= BEFEHLSZAEHLER;
-                          when LDA_kn => Steuersignale <= "00000000";
-                            -- when LDA_an => 
+                          when LDA_an =>
+                              if Semaphor = '0' then
+                                  Semaphor <= '1';
+                                  HighByte <= Datenbus;
+                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                              else
+                                  Semaphor <= '0';
+                                  LowByte := Datenbus;
+                                  Adressbus <= HighByte & LowByte; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                              end if;
+                              
+                          when LDA_kn => Steuersignale <= "000";
+                          
                           when STA_an => 
+                              if Semaphor = '0' then
+                                  Semaphor <= '1';
+                                  HighByte <= Datenbus;
+                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                              else
+                                  Semaphor <= '0';
+                                  LowByte := Datenbus;
+                              end if;
                           when others => STATE <= Z0;
                       end case;
                       STATE <= Z3;
                   elsif OpCodeREG(3) = '1' then 
-                      case OpCodeREG is
-                          --Semaphor muss immer zurückgesetzt werden, sofern das Hilfsreg beschrieben wird
-                          when ADD_kn => Steuersignale <= "00000100";
-                        --  when ADD_an => 
-                          when SUB_kn => Steuersignale <= "00000101";
-                       --   when SUB_an => 
-                          when SHIFT_L => Steuersignale <= "00000010";
-                          when SHIFT_R => Steuersignale <= "00000011";
+                      case OpCodeREG is                      
+                          when SHIFT_R => Steuersignale <= "001";
+                          when SHIFT_L => Steuersignale <= "010";
+                          when ADD_kn => Steuersignale <= "011";
+                          when SUB_kn => Steuersignale <= "100";
                           when others => STATE <= Z0;
                       end case;
                       STATE <= Z3;
-                  elsif OpCodeREG(4) = '1' then
-                      case OpCodeREG is
-                          when JMP_an => 
-                            if Semaphor = '0' then
-                                Semaphor <= '1';
-                                HighByte <= Datenbus;
-                            else
-                                Semaphor <= '0';
-                                LowByte <= Datenbus;
-                                BEFEHLSZAEHLER <=  HighByte & LowByte;
-                                STATE <= Z0;
-                            end if;
-                           
-                          when JMPC_an =>
-                            if C = '1' then
-                                if Semaphor = '0' then
-                                    Semaphor <= '1';
-                                    HighByte <= Datenbus;
-                                else
-                                    Semaphor <= '0';
-                                    LowByte <= Datenbus;          
-                                    BEFEHLSZAEHLER <=  HighByte & LowByte;
-                                    STATE <= Z0;
+                  elsif OpCodeREG(4) = '1' then --JMP BEFEHL
+                        JMP_COND := '0'; --Unterscheidung ob ein JMP BEFEHl gemacht werden soll
+                        case OpCodeReg(2 downto 0) is --Welcher JMP BEFEHL ? 
+                        when "001" => JMP_COND := '1'; 
+                            when "010" => 
+                                if C = '1' then
+                                    JMP_COND := '1';
                                 end if;
-                            else
-                                STATE <= Z0;
-                            end if;
-                            
-                          when JMPN_an =>
-                            if N = '1' then
-                                if Semaphor = '0' then
-                                    Semaphor <= '1';
-                                    HighByte <= Datenbus;
-                                else
-                                    Semaphor <= '0';
-                                    LowByte <= Datenbus;          
-                                    BEFEHLSZAEHLER <=  HighByte & LowByte;
-                                    STATE <= Z0;
+                            when "011" =>
+                                if N = '1' then
+                                    JMP_COND := '1';
                                 end if;
-                            else
-                                STATE <= Z0;
-                            end if;
-                            
-                          when JMPO_an =>
-                            if O = '1' then
-                                if Semaphor = '0' then
-                                  Semaphor <= '1';
-                                  HighByte <= Datenbus;
-                                else
-                                  Semaphor <= '0';
-                                  LowByte <= Datenbus;          
-                                  BEFEHLSZAEHLER <=  HighByte & LowByte;
-                                  STATE <= Z0;
+                            when "100" =>
+                                if O = '1' then
+                                    JMP_COND := '1';
                                 end if;
-                            else
-                                STATE <= Z0;
-                            end if;
-                          when JMPZ_an =>
-                            if Z = '1' then
-                                if Semaphor = '0' then
-                                  Semaphor <= '1';
-                                  HighByte <= Datenbus;
-                              else
-                                  Semaphor <= '0';
-                                  LowByte <= Datenbus;          
-                                  BEFEHLSZAEHLER <=  HighByte & LowByte;
-                                  STATE <= Z0;
-                              end if;
-                            else
-                                  STATE <= Z0;
-                            end if; 
-                          when others => STATE <= Z0;
-                      end case;
+                            when "101" =>
+                                if Z = '1' then
+                                    JMP_COND := '1';
+                               end if;
+                         end case;
+                         
+                         if JMP_COND = '1' then
+                             if Semaphor = '0' then
+                                 Semaphor <= '1';
+                                 HighByte <= Datenbus;
+                                 BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                             else
+                                 Semaphor <= '0';
+                                 LowByte <= Datenbus;
+                                 BEFEHLSZAEHLER <=  HighByte & LowByte;
+                                 STATE <= Z0;
+                             end if;
+                          else
+                            STATE <= Z0;
+                          end if;
+
                   elsif OpCodeREG(5) = '1' then
-                      case OpCodeREG is
-                          when NOT_ => 
-                          when AND_ =>
-                          when OR_ =>
-                          when others =>
+                      case OpCodeREG is           
+                          when AND_ => Steuersignale <= "101";
+                          when OR_ => Steuersignale <= "110";
+                          when NOT_ => Steuersignale <= "111";
+                          when others => STATE <= Z0;
                       end case;
                       STATE <= Z3;
                   end if;         
  -----------------------------------------EXECUTE------------------------------------------------------------------------                  
                 when Z3 =>
+                    if OpCodeREG(7) = "1" then
+                        if OpCodeReg(1 downto 0) = "10" then --Load Address
+                            Steuersignale <= "000";
+                        elsif OpCodeReg(1 downto 0) = "11" then --Store Address
+                        
+                        end if;
+                    end if;
+                
+                
+                
+                    BEFEHLSZAHLER <= BEFEHLSZAEHLER + 1; --Um auf den nächsten Befehl zu kommen                
                     STATE <= Z4;
  -----------------------------------------STORE------------------------------------------------------------------------    
                 when Z4 =>
