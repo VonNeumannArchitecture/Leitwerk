@@ -35,11 +35,10 @@ entity LeitwerkCode is
     Port ( CLK : in STD_LOGIC;
            Datenbus : in STD_LOGIC_VECTOR (7 downto 0);
            CS_out : out STD_LOGIC;
-           WRITE_ENABLE_OUT : out STD_LOGIC;
+           RW : out STD_LOGIC;
            Adressbus : out STD_LOGIC_VECTOR (15 downto 0);
            StatusRegister : in STD_LOGIC_VECTOR (3 downto 0);
            Steuersignale : out STD_LOGIC_VECTOR (3 downto 0);
-           WRITE_ON_DATA_BUS : out STD_LOGIC;
            RESET : in STD_LOGIC;
            Init: in STD_LOGIC_VECTOR(15 downto 0));
 end LeitwerkCode;
@@ -114,7 +113,7 @@ begin
         if RESET = '1' then
             STATE <= Z0;
             BEFEHLSZAEHLER <= Init;
-            Steuersignale <= "00000000";
+            Steuersignale <= "0000";      
         else
             STATE <= Z0;
             case STATE is
@@ -124,42 +123,42 @@ begin
                     Adressbus <= BEFEHLSZAEHLER; --Befehlszaehler auf den Adressbus schreiben, um Speicher zu signalisieren, was man auf dem Datenbus haben möchte
                     BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
                     CS_OUT <= '0'; --?? Muss noch deklariert werden, wie es genau ausgewaehlt werden soll
-                    WRITE_ENABLE_OUT <= '1';
+                    RW <= '1';
                     STATE <= Z1;
  -----------------------------------------DECODE------------------------------------------------------------------------
                 when Z1 =>
                     Steuersignale <= "0000";
                     STATE <= Z2;
                     Opcode <= Datenbus;
-                  
+                    CS <= '1';
+                    
                     OpCodeREG <= Datenbus;
                         if Kontrollfluss = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
                             if OpCode(0) or OpCode(1) then
-                                Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                Adressbus <= BEFEHLSZAEHLER; CS <= '0'; RW <= '1';
                              end if;
                         elsif Arithmetisch = '1' then 
                             case OpCode is
-                                when ADD_kn =>Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
-                                when SUB_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                when ADD_kn =>Adressbus <= BEFEHLSZAEHLER; CS <= '0'; RW <= '1';
+                                when SUB_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; RW <= '1';
                                 --Shift Befehl ist hier schon im Operand - Fetch / Execulte --> Signal kann also direkt übergeben werden an das Rechenwerk, genauso wie bei NOT
                                 when SHIFT_R => Steuersignale <= "1001";  STATE <= Z3; --braucht kein Operand fetch
                                 when SHIFT_L => Steuersignale <= "1010";  STATE <= Z3; --braucht kein Operand fetch
                                 when others => STATE <= Z0;
                             end case;
                         elsif JMPBefehl = '1' then --JMP BEFEHLE
-                            Adressbus <= BEFEHLSZAEHLER;
+                            Adressbus <= BEFEHLSZAEHLER; CS <= '0'; RW <= '1';
                         elsif Logisch = '1' then
                             case OpCode is
                                 when NOT_ => Steuersignale <= "0111"; STATE <= Z3;--braucht kein Operand
-                                when AND_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
-                                when OR_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
+                                when AND_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; RW <= '1';
+                                when OR_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; RW <= '1';
                                 when others => STATE <= Z0;
                             end case;
-                        end if;
-                    
-                    WRITE_ENABLE_OUT <= '0';
+                        end if;                
  -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
                 when Z2 =>
+                  CS <= '1';
                   Steuersignale <= "0000"; 
                   STATE <= Z3;
                   --KONTROLLFLUSS BEFEHLE-----------------------------------------------------------------
@@ -170,20 +169,13 @@ begin
                               if Semaphor = '0' then
                                   Semaphor <= '1';
                                   HighByte <= Datenbus;
-                                  Adressbus <= BEFEHLSZAEHLER + 1;
+                                  Adressbus <= BEFEHLSZAEHLER + 1; CS <= '0'; RW <= '1';
                                   BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
-                                  Counter <= "0000";
                                   STATE <= Z2;
                               else
-                                  if Counter = "1111" then --WarteZyklus
-                                      Semaphor <= '0';
-                                      Counter <= "0000";
-                                      LowByte := Datenbus;
-                                      Adressbus <= HighByte & LowByte; CS <= '0'; WRITE_ENABLE_OUT <= '1';
-                                  else
-                                    Counter <= Counter +1;
-                                    STATE <= Z2;
-                                  end if;
+                                  Semaphor <= '0';
+                                  LowByte := Datenbus;
+                                  Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
                               end if;
                               
                           when LDA_kn => Steuersignale <= "0001";
@@ -192,21 +184,14 @@ begin
                               if Semaphor = '0' then
                                   Semaphor <= '1';
                                   HighByte <= Datenbus;
-                                  Adressbus <= BEFEHLSZAEHLER + 1;
+                                  Adressbus <= BEFEHLSZAEHLER + 1; CS <= '0'; RW <= '1';
                                   BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
-                                  Counter <= "0000";
                                   STATE <= Z2;
                               else
-                                  if Counter = "1111" then
-                                      Semaphor <= '0';
-                                      Counter <= "0000";
-                                      LowByte := Datenbus;
-                                      Adressbus <= HighByte & LowByte; CS <= '0'; 
-                                      WRITE_ON_DATA_BUS <= '1';
-                                  else
-                                    Counter <= Counter +1;
-                                    STATE <= Z2;
-                                  end if;
+                                  Semaphor <= '0';
+                                  LowByte := Datenbus;
+                                  Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
+                                  Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
                               end if;
                           when others => STATE <= Z0;
                       end case;
@@ -245,19 +230,12 @@ begin
                              if Semaphor = '0' then
                                  Semaphor <= '1';
                                  HighByte <= Datenbus;
-                                 Adressbus <= BEFEHLSZAEHLER + 1;
+                                 Adressbus <= BEFEHLSZAEHLER + 1; CS <= '0'; RW <= '1';
                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
-                                 Counter <= "0000";
-                             else
-                                 if Counter = "1111" then
-                                     Semaphor <= '0';
-                                     LowByte <= Datenbus;
-                                     BEFEHLSZAEHLER <=  HighByte & LowByte;
-                                 else
-                                    STATE <= Z2;
-                                    Counter <= Counter +1;
-                                 end if;
-
+                             else              
+                                 Semaphor <= '0';
+                                 LowByte <= Datenbus;
+                                 BEFEHLSZAEHLER <=  HighByte & LowByte;
                                  STATE <= Z0;
                              end if;
                           else
@@ -274,11 +252,11 @@ begin
  -----------------------------------------EXECUTE------------------------------------------------------------------------                  
                 when Z3 =>
                 Steuersignale <= "0000";
-                    if OpCodeREG(7) = "1" then
+                    if ArithmethischREG = "1" then
                         if OpCodeReg(1 downto 0) = "01" then --Load Address
                             Steuersignale <= "0001";
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
-                            WRITE_ENABLE_OUT <= '0';
+                            RW <= '0';
                             Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
                         end if;
                     end if;
@@ -288,8 +266,9 @@ begin
                     WRITE_ON_DATA_BUS <= '0'; --Nicht mehr erlauben auf den datenbus zu schreiben
  -----------------------------------------STORE------------------------------------------------------------------------    
                 when Z4 =>
+                    CS <= '1';
                     Steuersignale <= "0000";
-                    WRITE_ENABLE_OUT <= '1'; --Standard Value
+                    RW <= '1'; --Standard Value
                     Counter <= "0000"; --Standard value
                     STATE <= Z0;
             end case;
