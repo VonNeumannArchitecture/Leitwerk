@@ -38,7 +38,7 @@ entity LeitwerkCode is
            WRITE_ENABLE_OUT : out STD_LOGIC;
            Adressbus : out STD_LOGIC_VECTOR (15 downto 0);
            StatusRegister : in STD_LOGIC_VECTOR (3 downto 0);
-           Steuersignale : out STD_LOGIC_VECTOR (2 downto 0);
+           Steuersignale : out STD_LOGIC_VECTOR (3 downto 0);
            WRITE_ON_DATA_BUS : out STD_LOGIC;
            RESET : in STD_LOGIC;
            Init: in STD_LOGIC_VECTOR(15 downto 0));
@@ -56,12 +56,11 @@ type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
 signal STATE, NEXT_ST: STATE_TYPE;
 
 subtype BEFEHL_TYPE is STD_LOGIC_VECTOR(7 downto 0);
+
 constant NOPE: BEFEHL_TYPE:=  "10000000";
 constant LDA_kn: BEFEHL_TYPE:=  "10000001";
 constant LDA_an: BEFEHL_TYPE:=  "10000010";
 constant STA_an: BEFEHL_TYPE:=  "10000011";
-
-
 
 constant SHIFT_R: BEFEHL_TYPE := "00001001";
 constant SHIFT_L: BEFEHL_TYPE := "00001010";
@@ -85,6 +84,13 @@ constant NOT_: BEFEHL_TYPE:=  "01000111";
 constant AND_: BEFEHL_TYPE:=  "01000101";
 constant OR_:  BEFEHL_TYPE:=  "01000110";
 
+
+
+alias ArithmethischREG: STD_LOGIC is OpCodeREG(3);
+alias JMPBefehlREG: STD_LOGIC is OpCodeREG(4);
+alias LogischREG: STD_LOGIC is OpCodeREG(5);
+alias KontrollflussREG: STD_LOGIC is OpcodeREG(7);
+
 --000,001,010,011,100,
 
 begin
@@ -96,6 +102,13 @@ variable Opcode: STD_LOGIC_VECTOR(7 downto 0);
 variable Lowbyte: STD_LOGIC_VECTOR(7 downto 0);
 variable JMP_ADRESS: STD_LOGIC(15 downto 0);
 variable JMP_COND: STD_LOGIC;
+
+alias Kontrollfluss: STD_LOGIC is Opcode(7);
+alias Arithmetisch: STD_LOGIC is Opcode(3);
+alias JMPBefehl: STD_LOGIC is Opcode(4);
+alias Logisch: STD_LOGIC is Opcode(5);
+
+
 begin
     if risng_edge(CLK) then
         if RESET = '1' then
@@ -107,6 +120,7 @@ begin
             case STATE is
   -----------------------------------------OPCODE------------------------------------------------------------------------
                 when Z0 =>
+                    Steuersignale <= "0000";
                     Adressbus <= BEFEHLSZAEHLER; --Befehlszaehler auf den Adressbus schreiben, um Speicher zu signalisieren, was man auf dem Datenbus haben möchte
                     BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
                     CS_OUT <= '0'; --?? Muss noch deklariert werden, wie es genau ausgewaehlt werden soll
@@ -114,27 +128,29 @@ begin
                     STATE <= Z1;
  -----------------------------------------DECODE------------------------------------------------------------------------
                 when Z1 =>
+                    Steuersignale <= "0000";
                     STATE <= Z2;
                     Opcode <= Datenbus;
+                  
                     OpCodeREG <= Datenbus;
-                        if Opcode(7) = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
+                        if Kontrollfluss = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
                             if OpCode(0) or OpCode(1) then
                                 Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
                              end if;
-                        elsif Opcode(3) = '1' then 
+                        elsif Arithmetisch = '1' then 
                             case OpCode is
                                 when ADD_kn =>Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
                                 when SUB_kn => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
                                 --Shift Befehl ist hier schon im Operand - Fetch / Execulte --> Signal kann also direkt übergeben werden an das Rechenwerk, genauso wie bei NOT
-                                when SHIFT_R => Steuersignale <= "001";  STATE <= Z3;
-                                when SHIFT_L => Steuersignale <= "010";  STATE <= Z3;
+                                when SHIFT_R => Steuersignale <= "1001";  STATE <= Z3; --braucht kein Operand fetch
+                                when SHIFT_L => Steuersignale <= "1010";  STATE <= Z3; --braucht kein Operand fetch
                                 when others => STATE <= Z0;
                             end case;
-                        elsif Opcode(4) = '1' then
+                        elsif JMPBefehl = '1' then --JMP BEFEHLE
                             Adressbus <= BEFEHLSZAEHLER;
-                        elsif Opcode(5) = '1' then
+                        elsif Logisch = '1' then
                             case OpCode is
-                                when NOT_ => Steuersignale <= "111"; 
+                                when NOT_ => Steuersignale <= "0111"; STATE <= Z3;--braucht kein Operand
                                 when AND_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
                                 when OR_ => Adressbus <= BEFEHLSZAEHLER; CS <= '0'; WRITE_ENABLE_OUT <= '1';
                                 when others => STATE <= Z0;
@@ -144,9 +160,10 @@ begin
                     WRITE_ENABLE_OUT <= '0';
  -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
                 when Z2 =>
+                  Steuersignale <= "0000"; 
                   STATE <= Z3;
                   --KONTROLLFLUSS BEFEHLE-----------------------------------------------------------------
-                  if OpCodeREG(7) = '1' then
+                  if KontrollflussREG = '1' then
                         case OpCodeREG is
                           when NOPE => --Adressbus <= BEFEHLSZAEHLER;
                           when LDA_an =>
@@ -169,7 +186,7 @@ begin
                                   end if;
                               end if;
                               
-                          when LDA_kn => Steuersignale <= "000";
+                          when LDA_kn => Steuersignale <= "0001";
                           
                           when STA_an => 
                               if Semaphor = '0' then
@@ -195,14 +212,14 @@ begin
                       end case;
                    
                    --ARITHMETHISCHE BEFEHLE--------------------------------------------------------------   
-                  elsif OpCodeREG(3) = '1' then 
+                  elsif ArithmetischREG = '1' then 
                     if  OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "101" or OpCodeREG(2 downto 0) = "110" or OpCodeREG(2 downto 0) = "111" then
                         STATE <= Z0; --Opcode wurde nicht richtig entschlüsselt
                     else
-                        Steuersignale <= OpCodeREG(2 downto 0);
+                        Steuersignale <= OpCodeREG(3 downto 0);
                     end if;
                   --JMP BEFEHL----------------------------------------------------------------------------
-                  elsif OpCodeREG(4) = '1' then 
+                  elsif JMPBefehlREG = '1' then 
                         JMP_COND := '0'; --Unterscheidung ob ein JMP BEFEHl gemacht werden soll
                         case OpCodeReg(2 downto 0) is --Welcher JMP BEFEHL ? 
                             when "001" => JMP_COND := '1'; 
@@ -247,20 +264,22 @@ begin
                             STATE <= Z0;
                           end if;
                   --LOGISCHE BEFEHLE------------------------------------------------------------------------------------
-                  elsif OpCodeREG(5) = '1' then
+                  elsif LogischREG = '1' then
                       if OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "001" or OpCodeREG(2 downto 0) = "010"  or OpCodeREG(2 downto 0) = "011" or OpCodeREG(2 downto 0) = "100" then
                         STATE <= Z0;
                       else
-                        Steuersignale <= OpCodeREG(2 downto 0);
+                        Steuersignale <= OpCodeREG(3 downto 0);
                       end if;
                   end if;         
  -----------------------------------------EXECUTE------------------------------------------------------------------------                  
                 when Z3 =>
+                Steuersignale <= "0000";
                     if OpCodeREG(7) = "1" then
-                        if OpCodeReg(1 downto 0) = "10" then --Load Address
-                            Steuersignale <= "000";
+                        if OpCodeReg(1 downto 0) = "01" then --Load Address
+                            Steuersignale <= "0001";
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
                             WRITE_ENABLE_OUT <= '0';
+                            Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
                         end if;
                     end if;
                
@@ -269,6 +288,7 @@ begin
                     WRITE_ON_DATA_BUS <= '0'; --Nicht mehr erlauben auf den datenbus zu schreiben
  -----------------------------------------STORE------------------------------------------------------------------------    
                 when Z4 =>
+                    Steuersignale <= "0000";
                     WRITE_ENABLE_OUT <= '1'; --Standard Value
                     Counter <= "0000"; --Standard value
                     STATE <= Z0;
