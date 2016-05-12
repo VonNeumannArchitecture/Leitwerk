@@ -240,6 +240,7 @@ begin
                                  HighByte <= Datenbus;
                                  Adressbus <= std_logic_vector(BEFEHLSZAEHLER + 1); CS <= '0'; RW <= '1';
                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                                 STATE <= OPERAND_FETCH;
                              else              
                                  Semaphor <= '0';
                                  LowByte := Datenbus;
