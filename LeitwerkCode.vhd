@@ -138,8 +138,7 @@ begin
                     Opcode := Datenbus;
                     OpCodeREG <= Datenbus;
                     CS <= '1';
-                    
-                    
+                              
                         if Kontrollfluss = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
                             if OpCode(0) = '1' or OpCode(1) = '1' then
                                 Adressbus <= std_logic_vector(BEFEHLSZAEHLER); CS <= '0'; RW <= '1';
@@ -208,7 +207,13 @@ begin
                     if  OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "101" or OpCodeREG(2 downto 0) = "110" or OpCodeREG(2 downto 0) = "111" then
                         STATE <= OPCODE_FETCH; --Opcode wurde nicht richtig entschlüsselt
                     else
-                        Steuersignale <= OpCodeREG(3 downto 0);
+                        if Semaphor = '0' then
+                            Semaphor <= '1';
+                            STATE <= OPERAND_FETCH;
+                        else
+                            Steuersignale <= OpCodeREG(3 downto 0);
+                            Semaphor <= '0';
+                        end if;
                     end if;
                   --JMP BEFEHL----------------------------------------------------------------------------
                   elsif JMPBefehlREG = '1' then 
@@ -240,6 +245,7 @@ begin
                                  HighByte <= Datenbus;
                                  Adressbus <= std_logic_vector(BEFEHLSZAEHLER + 1); CS <= '0'; RW <= '1';
                                  BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                                 STATE <= OPERAND_FETCH;
                              else              
                                  Semaphor <= '0';
                                  LowByte := Datenbus;
@@ -254,7 +260,13 @@ begin
                       if OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "001" or OpCodeREG(2 downto 0) = "010"  or OpCodeREG(2 downto 0) = "011" or OpCodeREG(2 downto 0) = "100" then
                         STATE <= OPCODE_FETCH;
                       else
-                        Steuersignale <= OpCodeREG(3 downto 0);
+                        if Semaphor <= '0' then
+                            Semaphor <= '1';
+                            STATE <= OPERAND_FETCH;
+                        else
+                            Steuersignale <= OpCodeREG(3 downto 0);
+                            Semaphor <= '0';
+                        end if;
                       end if;
                   end if;         
  -----------------------------------------EXECUTE------------------------------------------------------------------------                  
