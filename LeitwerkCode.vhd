@@ -260,12 +260,12 @@ begin
  -----------------------------------------EXECUTE------------------------------------------------------------------------                  
                 when EXECUTE =>
                 Steuersignale <= "0000";
-                    if ArithmethischREG = '1' then
+                    if KontrollflussREG = '1' then
                         if OpCodeReg(1 downto 0) = "01" then --Load Address
                             Steuersignale <= "0001";
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
                             RW <= '0';
-                            Steuersignale <= "0000"; -- ALU sagen, dass es die Daten auf den Bus legen soll
+                            Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
                         end if;
                     end if;
                
