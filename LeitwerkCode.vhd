@@ -244,7 +244,7 @@ begin
                                  Semaphor <= '0';
                                  LowByte := Datenbus;
                                  BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
-                                 STATE <= OPCODE_FETCH;
+                                 STATE <= WRITE_BACK;
                              end if;
                           else
                             STATE <= OPCODE_FETCH;
