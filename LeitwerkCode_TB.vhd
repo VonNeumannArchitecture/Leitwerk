@@ -18,18 +18,8 @@
 -- 
 ----------------------------------------------------------------------------------
 
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-
--- Uncomment the following library declaration if using
--- arithmetic functions with Signed or Unsigned values
---use IEEE.NUMERIC_STD.ALL;
-
--- Uncomment the following library declaration if instantiating
--- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
 
 entity LeitwerkCode_TB is
 --  Port ( );
@@ -81,12 +71,42 @@ begin
     wait for CLK_PERIOD/2; 
 end process CLK_GEN;
 
+
+
 OPCODE_TEST: process 
+alias Konstanten: STD_LOGIC_VECTOR is opcode;
+alias HighByte: STD_LOGIC_VECTOR is opcode;
+alias LowByte: STD_LOGIC_VECTOR is opcode;
 begin 
-    wait for 100ns;
-    opcode <= "00001001"; --SHIFT_R
---    opcode <= "00001010"; --SHIFT_L
---    opcode <= "00001011"; --ADD_kn
+    wait for 50ns;
+        RESET <= '1';
+        Init <= "0000000000000000";
+    wait for 10ns;
+        RESET <= '0';
+--    wait for 10ns;
+--        opcode <= "00001001"; --SHIFT_R
+--    wait for 40ns;
+--        opcode <= "00001010"; --SHIFT_L
+--    wait for 40ns;
+ ----------------------------------------
+        opcode <= "00001011"; --ADD_kn
+    wait for 20 ns;
+        Konstanten <= "10101010";
+    wait for 40 ns;
+           opcode <= "00001100"; --SUB_kn
+    wait for 20 ns;
+        Konstanten <= "10101010";
+    wait for 40 ns;    
+        opcode <= "00010001"; --JMP_an
+    wait for 20 ns;
+        LowByte <= "00001000";
+     wait for 10 ns;
+        HighByte <= "00001001";
+    -- wait for 20 ns;
+        
+        
+        
+--    opcode <= "11100201";
 --    opcode <= "00001100"; --SUB_kn
 --    opcode <= "00001101"; --ADD_an
 --    opcode <= "00001110"; --ADD_an
@@ -108,6 +128,8 @@ begin
 --    opcode <= "10000001"; --LDA_kn
 --    opcode <= "10000010"; --LDA_an
 --    opcode <= "10000011"; --STA_an
+
+    wait;
     
     end process;
 end Behavioral;
