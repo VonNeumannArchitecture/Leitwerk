@@ -75,10 +75,10 @@ constant SUB_an: BEFEHL_TYPE:=  "00001110";
 
 
 constant JMP_an: BEFEHL_TYPE:=  "00010001";
-constant JMPC_an: BEFEHL_TYPE:=  "00100010";
-constant JMPN_an: BEFEHL_TYPE:=  "00100011";
-constant JMPO_an: BEFEHL_TYPE:=  "00100100";
-constant JMPZ_an: BEFEHL_TYPE:=  "00100101";
+constant JMPC_an: BEFEHL_TYPE:=  "00010010";
+constant JMPN_an: BEFEHL_TYPE:=  "00010011";
+constant JMPO_an: BEFEHL_TYPE:=  "00010100";
+constant JMPZ_an: BEFEHL_TYPE:=  "00010101";
 
 constant NOT_B: BEFEHL_TYPE:=  "01000111";
 constant AND_B: BEFEHL_TYPE:=  "01000101";
@@ -197,7 +197,7 @@ begin
                               else
                                   Semaphor <= '0';
                                   LowByte := Datenbus;
-                                  Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
+                                  Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '0';
                                   Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
                               end if;
                           when others => STATE <= OPCODE_FETCH;
