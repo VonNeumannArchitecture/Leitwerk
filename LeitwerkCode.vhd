@@ -51,6 +51,9 @@ signal Semaphor : STD_LOGIC := '0';
 --signal Counter : STD_LOGIC_VECTOR(3 downto 0) := "0000";
 signal OpCodeREG: STD_LOGIC_VECTOR(7 downto 0);
 signal HighByte: STD_LOGIC_VECTOR(7 downto 0);
+signal LowByte: STD_LOGIC_VECTOR(7 downto 0);
+
+signal JMP_CONDREG: STD_LOGIC;
 --type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
 type STATE_TYPE is (OPCODE_FETCH,DECODE,OPERAND_FETCH,EXECUTE,WRITE_BACK);
 signal STATE, NEXT_ST: STATE_TYPE;
@@ -75,10 +78,10 @@ constant SUB_an: BEFEHL_TYPE:=  "00001110";
 
 
 constant JMP_an: BEFEHL_TYPE:=  "00010001";
-constant JMPC_an: BEFEHL_TYPE:=  "00100010";
-constant JMPN_an: BEFEHL_TYPE:=  "00100011";
-constant JMPO_an: BEFEHL_TYPE:=  "00100100";
-constant JMPZ_an: BEFEHL_TYPE:=  "00100101";
+constant JMPC_an: BEFEHL_TYPE:=  "00010010";
+constant JMPN_an: BEFEHL_TYPE:=  "00010011";
+constant JMPO_an: BEFEHL_TYPE:=  "00010100";
+constant JMPZ_an: BEFEHL_TYPE:=  "00010101";
 
 constant NOT_B: BEFEHL_TYPE:=  "01000111";
 constant AND_B: BEFEHL_TYPE:=  "01000101";
@@ -104,7 +107,7 @@ LWerk: process(CLK,RESET)
 
 variable Opcode: STD_LOGIC_VECTOR(7 downto 0);
 --variable HighByte: STD_LOGIC_VECTOR(7 downto 0);
-variable Lowbyte: STD_LOGIC_VECTOR(7 downto 0);
+--variable Lowbyte: STD_LOGIC_VECTOR(7 downto 0);
 variable JMP_ADRESS: STD_LOGIC_VECTOR(15 downto 0);
 variable JMP_COND: STD_LOGIC;
 
@@ -180,8 +183,8 @@ begin
                                   STATE <= OPERAND_FETCH;
                               else
                                   Semaphor <= '0';
-                                  LowByte := Datenbus;
-                                  Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
+                                  LowByte <= Datenbus;
+                     --             Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
                               end if;
                               
                           when LDA_kn => Steuersignale <= "0001";
@@ -195,8 +198,9 @@ begin
                                   STATE <= OPERAND_FETCH;
                               else
                                   Semaphor <= '0';
-                                  LowByte := Datenbus;
-                                  Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
+                                  LowByte <= Datenbus;
+                                  RW <= '0';
+                          --        Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
                                   Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
                               end if;
                           when others => STATE <= OPCODE_FETCH;
@@ -223,18 +227,22 @@ begin
                             when "010" => 
                                 if C = '1' then
                                     JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
                                 end if;
                             when "011" =>
                                 if N = '1' then
                                     JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
                                 end if;
                             when "100" =>
                                 if O = '1' then
                                     JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
                                 end if;
                             when "101" =>
                                 if Z = '1' then
                                     JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
                                end if;
                              when others =>  STATE <= OPCODE_FETCH;
                          end case;
@@ -248,8 +256,8 @@ begin
                                  STATE <= OPERAND_FETCH;
                              else              
                                  Semaphor <= '0';
-                                 LowByte := Datenbus;
-                                 BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
+                                 LowByte <= Datenbus;
+                                -- BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
                                  STATE <= WRITE_BACK;
                              end if;
                           else
@@ -273,14 +281,20 @@ begin
                 when EXECUTE =>
                 Steuersignale <= "0000";
                     if KontrollflussREG = '1' then
-                        if OpCodeReg(1 downto 0) = "01" then --Load Address
+                        if OpCodeReg(1 downto 0) = "01" or OpCodeReg(1 downto 0) = "11" then --Load Address
+                            Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
                             Steuersignale <= "0001";
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
                             RW <= '0';
                             Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
                         end if;
                     end if;
-               
+                    
+                    if JMP_CONDREG = '1' then
+                        BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
+                    end if;       
+                           
+                              
                     BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1; --Um auf den nächsten Befehl zu kommen                
                     STATE <= WRITE_BACK;
  -----------------------------------------STORE------------------------------------------------------------------------    
@@ -290,6 +304,17 @@ begin
                     RW <= '1'; --Standard Value
                     --Counter <= "0000"; --Standard value
                     STATE <= OPCODE_FETCH;
+                    if KontrollflussREG = '1' then
+                        if OpCodeReg(1 downto 0) = "01"  then --Load Address
+                            Steuersignale <= "0001";
+                        elsif OpCodeReg(1 downto 0) = "11" then --Store Address
+                            RW <= '0';
+                            Steuersignale <= "0011"; -- ALU sagen, dass es die Daten auf den Bus legen soll
+                        end if;
+                    end if;
+                    
+                    
+                    
             end case;
         end if;
     end if;
