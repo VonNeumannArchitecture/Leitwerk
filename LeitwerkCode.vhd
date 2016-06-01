@@ -128,10 +128,15 @@ begin
             --STATE <= IDLE; 
             BEFEHLSZAEHLER <= unsigned(Init);-- +1;
             --Adressbus <= Init; CS <= '0'; RW <= '1';
-            Steuersignale <= "0000"; 
+            Steuersignale <= "0000";
+
+            Adressbus <= (others => 'Z');
+            CS <= 'Z';
+            EN <= 'Z';
             JMP_CONDREG <= '0';   
+            Semaphor <= '0';
+            Hold <= '0';
             --BEFEHLSZAEHLER <= BEFEHLSZAEHLER+1;
-  
         else
             STATE <= OPCODE_FETCH;
             case STATE is
@@ -162,7 +167,7 @@ begin
                         if Kontrollfluss = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
                             if OpCode(0) = '1' or OpCode(1) = '1' then
                                 Adressbus <= std_logic_vector(BEFEHLSZAEHLER); CS <= '0'; RW <= '1';
-                             end if;
+                            end if;
                         elsif Arithmetisch = '1' then 
                             case OpCode is
                                 when ADD_kn =>Adressbus <= std_logic_vector(BEFEHLSZAEHLER); CS <= '0'; RW <= '1';
@@ -182,16 +187,7 @@ begin
                                 when others => STATE <= OPCODE_FETCH;
                             end case;
                         end if;   
-                        
---                        if HOLD = '0' then
---                            STATE <= DECODE;
---                            HOLD <= '1';
---                        else
---                            STATE <= OPERAND_FETCH;
---                            HOLD <= '0';
---                        end if;
-                        
-                                     
+                                                            
  -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
                 when OPERAND_FETCH =>
                   CS <= '1';
@@ -215,6 +211,16 @@ begin
                               end if;
                               
                           when LDA_kn => Steuersignale <= "0001";
+--                            if Semaphor = '0' then
+--                                Semaphor <= '1';
+--                                STATE <= OPERAND_FETCH;
+--                                Steuersignale <= "0001";
+--                            else
+--                                Semaphor <= '0';
+                                
+--                            end if;
+                          
+                          
                           
                           when STA_an => 
                               if Semaphor = '0' then
@@ -233,11 +239,12 @@ begin
                           when others => STATE <= OPCODE_FETCH;
                       end case;
                    
-                   --ARITHMETHISCHE BEFEHLE--------------------------------------------------------------   
+                  --ARITHMETHISCHE BEFEHLE--------------------------------------------------------------   
                   elsif ArithmethischREG = '1' then 
                     if  OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "101" or OpCodeREG(2 downto 0) = "110" or OpCodeREG(2 downto 0) = "111" then
                         STATE <= OPCODE_FETCH; --Opcode wurde nicht richtig entschlüsselt
                     else
+                        --Verzögerung damit die Alu die Daten erst bekommt wenn das Kommando schon erkannt wurde
                         if Semaphor = '0' then
                             Semaphor <= '1';
                             STATE <= OPERAND_FETCH;
@@ -276,23 +283,34 @@ begin
                              when others =>  STATE <= OPCODE_FETCH;
                          end case;
                          
-                         if JMP_COND = '1' then
+                         if JMP_COND = '1' or JMP_CONDREG = '1' then
                              if Semaphor = '0' then
-                                 
-                                 if Hold = '0' then
+                                if Hold = '0' then
+                                    --nur warten, dass Daten anliegen
+                                    STATE <= OPERAND_FETCH;     
+                                    Adressbus <= std_logic_vector(BEFEHLSZAEHLER + 1); CS <= '0'; RW <= '1';
                                     Hold <= '1';
-                                 else
+                                else
+                                    STATE <= OPERAND_FETCH;
                                     Hold <= '0';
+                                   -- Adressbus <= std_logic_vector(BEFEHLSZAEHLER + 1); CS <= '0'; RW <= '1';
                                     HighByte <= Datenbus;
-                                     Semaphor <= '1';
-                                 end if;
-                                 Adressbus <= std_logic_vector(BEFEHLSZAEHLER + 1); CS <= '0'; RW <= '1';
-                                 BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
-                                 STATE <= OPERAND_FETCH;
-                             else              
-                                 Semaphor <= '0';
-                                 LowByte <= Datenbus;
-                                 STATE <= WRITE_BACK;
+                                    Semaphor <= '1';
+                                end if;
+                            else      
+                                if Hold = '0' then
+                                    Hold <= '0';
+                           --         STATE <= OPERAND_FETCH;
+                                    LowByte <= Datenbus;
+                                    STATE <= EXECUTE;
+                                    
+                                    Semaphor <= '0';   
+                               else
+                                    BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
+                                    STATE <= WRITE_BACK; 
+                                    JMP_CONDREG <= '0';      
+                                    Semaphor <= '0';                             
+                                end if;
                              end if;
                           else
                             STATE <= OPCODE_FETCH;
@@ -315,7 +333,7 @@ begin
                 when EXECUTE =>
                 Steuersignale <= "0000";
                     if KontrollflussREG = '1' then
-                        if OpCodeReg(1 downto 0) = "01" or OpCodeReg(1 downto 0) = "11" then --Load Address
+                        if OpCodeReg(1 downto 0) = "10" or OpCodeReg(1 downto 0) = "11" then --Load Address
                             Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
                             Steuersignale <= "0001";
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
@@ -324,27 +342,24 @@ begin
                         end if;
                     end if;
                     
-     
-                           
-                              
-                    BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1; --Um auf den nächsten Befehl zu kommen                
+                    if JMP_CONDREG = '1' then
+                        BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
+                        JMP_CONDREG <= '0';
+                    else
+                        BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                    end if;       
+      
+                   
                     STATE <= WRITE_BACK;
  -----------------------------------------STORE------------------------------------------------------------------------    
                 when WRITE_BACK =>
-                    STATE <= OPCODE_FETCH;
-                    if JMP_CONDREG = '1' then
-                        JMP_CONDREG <= '0'; --wieder zurücksetzen
-                        BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
-                    end if;  
-                
-                
                     CS <= '1';
                     Steuersignale <= "0000";
                     RW <= '1'; --Standard Value
                     --Counter <= "0000"; --Standard value
-                    
+                    STATE <= OPCODE_FETCH;
                     if KontrollflussREG = '1' then
-                        if OpCodeReg(1 downto 0) = "01"  then --Load Address
+                        if OpCodeReg(1 downto 0) = "10"  then --Load Address
                             Steuersignale <= "0001";
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
                             RW <= '0';
@@ -354,6 +369,5 @@ begin
             end case;
         end if;
     end if;
-    
 end process LWerk;
 end Behavioral;
