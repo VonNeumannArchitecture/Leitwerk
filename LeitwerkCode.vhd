@@ -58,20 +58,20 @@ signal LowByte: STD_LOGIC_VECTOR(7 downto 0);
 
 signal JMP_CONDREG: STD_LOGIC := '0';
 --type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
-type STATE_TYPE is (OPCODE_FETCH,DECODE,OPERAND_FETCH,EXECUTE,WRITE_BACK,IDLE);
+type STATE_TYPE is (OPCODE_FETCH,DECODE,OPERAND_FETCH,EXECUTE,WRITE_BACK);
 signal STATE, NEXT_ST: STATE_TYPE;
 
 subtype BEFEHL_TYPE is STD_LOGIC_VECTOR(7 downto 0);
 
 constant NOPE: BEFEHL_TYPE:=  "10000000";
-constant LDA_kn: BEFEHL_TYPE:=  "10000001";
-constant LDA_an: BEFEHL_TYPE:=  "10000010";
-constant STA_an: BEFEHL_TYPE:=  "10000011";
+constant LDA_kn: BEFEHL_TYPE:=  "10000001"; --Typ 1
+constant LDA_an: BEFEHL_TYPE:=  "10000010"; --Typ 2
+constant STA_an: BEFEHL_TYPE:=  "10000011"; --Typ 3
 
-constant SHIFT_R: BEFEHL_TYPE := "00001001";
-constant SHIFT_L: BEFEHL_TYPE := "00001010";
-constant ADD_kn: BEFEHL_TYPE:=  "00001011";
-constant SUB_kn: BEFEHL_TYPE:=  "00001100"; 
+constant SHIFT_R: BEFEHL_TYPE := "00001001"; --Typ 4
+constant SHIFT_L: BEFEHL_TYPE := "00001010"; --Typ 4
+constant ADD_kn: BEFEHL_TYPE:=  "00001011"; --Typ 5
+constant SUB_kn: BEFEHL_TYPE:=  "00001100";  --Typ 5
 
 --000,101,110,111
 
@@ -80,15 +80,15 @@ constant ADD_an: BEFEHL_TYPE:=  "00001101";
 constant SUB_an: BEFEHL_TYPE:=  "00001110";
 
 
-constant JMP_an: BEFEHL_TYPE:=  "00010001";
-constant JMPC_an: BEFEHL_TYPE:=  "00010010";
-constant JMPN_an: BEFEHL_TYPE:=  "00010011";
-constant JMPO_an: BEFEHL_TYPE:=  "00010100";
-constant JMPZ_an: BEFEHL_TYPE:=  "00010101";
+constant JMP_an: BEFEHL_TYPE:=  "00010001";  --Typ 6
+constant JMPC_an: BEFEHL_TYPE:=  "00010010"; --Typ 7
+constant JMPN_an: BEFEHL_TYPE:=  "00010011"; --Typ 6
+constant JMPO_an: BEFEHL_TYPE:=  "00010100"; -- "
+constant JMPZ_an: BEFEHL_TYPE:=  "00010101"; -- "
 
-constant NOT_B: BEFEHL_TYPE:=  "01000111";
-constant AND_B: BEFEHL_TYPE:=  "01000101";
-constant OR_B:  BEFEHL_TYPE:=  "01000110";
+constant NOT_B: BEFEHL_TYPE:=  "01000111"; --Typ 4
+constant AND_B: BEFEHL_TYPE:=  "01000101"; --Typ 5
+constant OR_B:  BEFEHL_TYPE:=  "01000110"; -- Typ 5
 
 
 
@@ -124,10 +124,7 @@ begin
     if rising_edge(CLK) then
         if RESET = '1' then
             STATE <= OPCODE_FETCH;
-            --STATE <= DECODE;        
-            --STATE <= IDLE; 
             BEFEHLSZAEHLER <= unsigned(Init);-- +1;
-            --Adressbus <= Init; CS <= '0'; RW <= '1';
             Steuersignale <= "0000";
 
             Adressbus <= (others => 'Z');
@@ -136,18 +133,14 @@ begin
             JMP_CONDREG <= '0';   
             Semaphor <= '0';
             Hold <= '0';
-            --BEFEHLSZAEHLER <= BEFEHLSZAEHLER+1;
+
         else
             STATE <= OPCODE_FETCH;
             case STATE is
-                when IDLE => 
-                    STATE <= OPCODE_FETCH;
-  -----------------------------------------OPCODE------------------------------------------------------------------------
+-----------------------------------------OPCODE------------------------------------------------------------------------
                 when OPCODE_FETCH =>
                     Steuersignale <= "0000";
                     CS <= '1';
-                    --Semaphor <= '0';
-                    --STATE <= DECODE;
                     if HOLD = '0' then
                         Adressbus <= std_logic_vector(BEFEHLSZAEHLER); CS <= '0'; RW <= '1';--Befehlszaehler auf den Adressbus schreiben, um Speicher zu signalisieren, was man auf dem Datenbus haben möchte
                         HOLD <= '1';
@@ -165,7 +158,6 @@ begin
                     CS <= '1';
                               
                         if Kontrollfluss = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
-                         --   if Opcode(3 downto 0) = "0011" or Opcode(3 downto 0) = "0010" or Opcode(3 downto 0) = "0001" then
                             if (OpCode(0) = '1' or OpCode(1) = '1') and (OpCode(2) = '0' and OpCode(3) = '0') then
                                 Adressbus <= std_logic_vector(BEFEHLSZAEHLER+1); CS <= '0'; RW <= '1';
                                 BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
@@ -225,8 +217,7 @@ begin
                                LowByte <= Datenbus;
                                Semaphor <= '0';
                                STATE <= EXECUTE;
-                       --        Steuersignale <= "0011"; 
-                           end if;
+                            end if;
                              
                           when LDA_kn => Steuersignale <= "0001";
                           when STA_an => 
@@ -257,14 +248,7 @@ begin
                     if  OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "101" or OpCodeREG(2 downto 0) = "110" or OpCodeREG(2 downto 0) = "111" then
                         STATE <= OPCODE_FETCH; --Opcode wurde nicht richtig entschlüsselt
                     else
-                        --Verzögerung damit die Alu die Daten erst bekommt wenn das Kommando schon erkannt wurde
-                --        if Semaphor = '0' then
-                --            Semaphor <= '1';
-               --             STATE <= OPERAND_FETCH;
-               --         else
                             Steuersignale <= OpCodeREG(3 downto 0);
-              --              Semaphor <= '0';
-              --          end if;
                     end if;
                   --JMP BEFEHL----------------------------------------------------------------------------
                   elsif JMPBefehlREG = '1' then 
@@ -324,13 +308,7 @@ begin
                       if OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "001" or OpCodeREG(2 downto 0) = "010"  or OpCodeREG(2 downto 0) = "011" or OpCodeREG(2 downto 0) = "100" then
                         STATE <= OPCODE_FETCH;
                       else
-                  --      if Semaphor <= '0' then
-                  --          Semaphor <= '1';
-                 --           STATE <= OPERAND_FETCH;
-                 --       else
                             Steuersignale <= OpCodeREG(3 downto 0);
-                 --           Semaphor <= '0';
-                 --       end if;
                       end if;
                   end if;         
  -----------------------------------------EXECUTE------------------------------------------------------------------------                  
@@ -346,8 +324,7 @@ begin
                     BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
                 end if;       
                 
-                
-                
+
                 --Just for Load Address N    
                 if KontrollflussREG = '1' then
                     if OpCodeReg(1 downto 0) = "10" then
@@ -360,12 +337,10 @@ begin
                     CS <= '1';
                     Steuersignale <= "0000";
                     RW <= '1'; --Standard Value
-                    --Counter <= "0000"; --Standard value
                     STATE <= OPCODE_FETCH;
                     if KontrollflussREG = '1' then
                         if OpCodeReg(1 downto 0) = "10" then--or OpCodeReg(1 downto 0) = "11" then --Load Address
-                           -- Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
-                            Steuersignale <= "0001"; 
+                            Steuersignale <= "0001"; --im Adresse Execute rausgegeben
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
                             Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '0';
                         end if;
