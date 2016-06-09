@@ -58,7 +58,7 @@ signal LowByte: STD_LOGIC_VECTOR(7 downto 0);
 
 signal JMP_CONDREG: STD_LOGIC := '0';
 --type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
-type STATE_TYPE is (OPCODE_FETCH,DECODE,OPERAND_FETCH,EXECUTE,WRITE_BACK);
+type STATE_TYPE is (IDLE,OPCODE_FETCH,DECODE,OPERAND_FETCH,EXECUTE,WRITE_BACK);
 signal STATE, NEXT_ST: STATE_TYPE;
 
 subtype BEFEHL_TYPE is STD_LOGIC_VECTOR(7 downto 0);
@@ -134,7 +134,11 @@ begin
 
         else
             STATE <= OPCODE_FETCH;
+            
+
             case STATE is
+                when IDLE =>
+                    STATE <= IDLE;
 -----------------------------------------OPCODE------------------------------------------------------------------------
                 when OPCODE_FETCH =>
                     Steuersignale <= "0000";
@@ -190,6 +194,11 @@ begin
                         else 
                             STATE <= OPCODE_FETCH; BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
                         end if;                                                             
+                        
+                        if Opcode = "11111111" then
+                            STATE <= IDLE;
+                        end if;
+                        
                                                         
  -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
                 when OPERAND_FETCH =>
