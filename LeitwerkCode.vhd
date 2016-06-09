@@ -1,11 +1,11 @@
 ----------------------------------------------------------------------------------
--- Company: HS Mannheim
--- Engineer: Jürgen Altszeimer
+-- Company: 
+-- Engineer: Kevin Grygosch, Kevin Höfle
 -- 
--- Create Date: 27.04.2016 11:37:19
+-- Create Date: 20.04.2016 12:16:07
 -- Design Name: 
--- Module Name: ALU - Behavioral
--- Project Name: Von Neumann Prozessor
+-- Module Name: LeitwerkCode - Behavioral
+-- Project Name: 
 -- Target Devices: 
 -- Tool Versions: 
 -- Description: 
@@ -21,7 +21,7 @@
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.STD_LOGIC_SIGNED.ALL;
+
 -- Uncomment the following library declaration if using
 -- arithmetic functions with Signed or Unsigned values
 use IEEE.NUMERIC_STD.ALL;
@@ -31,166 +31,312 @@ use IEEE.NUMERIC_STD.ALL;
 --library UNISIM;
 --use UNISIM.VComponents.all;
 
-entity ALU is
-    generic (
-        datawidth : integer := 8
-    );
-    Port ( 
-        clk : in STD_LOGIC;
-        data : inout STD_LOGIC_VECTOR (datawidth-1 downto 0);
-        status : out STD_LOGIC_VECTOR (3 downto 0);
-        command : in STD_LOGIC_VECTOR (3 downto 0)
-     );        
-end ALU;
+entity LeitwerkCode is
+    Port ( CLK : in STD_LOGIC;
+           Datenbus : in STD_LOGIC_VECTOR (7 downto 0);
+           CS : out STD_LOGIC;
+           RW : out STD_LOGIC;
+           Adressbus : out STD_LOGIC_VECTOR (15 downto 0);
+           StatusRegister : in STD_LOGIC_VECTOR (3 downto 0);
+           Steuersignale : out STD_LOGIC_VECTOR (3 downto 0);
+           RESET : in STD_LOGIC;
+           Init: in STD_LOGIC_VECTOR(15 downto 0));
+end LeitwerkCode;
 
-architecture Behavioral of ALU is
-    constant C_NOP : STD_LOGIC_VECTOR(3 downto 0) := "0000";
-    constant C_WRITE : STD_LOGIC_VECTOR(3 downto 0) := "0011";
-    constant C_LOAD : STD_LOGIC_VECTOR(3 downto 0) := "0001";
-    constant C_SHIFT_R : STD_LOGIC_VECTOR(3 downto 0) := "1001";
-    constant C_SHIFT_L : STD_LOGIC_VECTOR(3 downto 0) := "1010";
-    constant C_ADD : STD_LOGIC_VECTOR(3 downto 0) := "1011";
-    constant C_SUB : STD_LOGIC_VECTOR(3 downto 0) := "1100";
-    constant C_AND : STD_LOGIC_VECTOR(3 downto 0) := "0101";
-    constant C_OR : STD_LOGIC_VECTOR(3 downto 0) := "0110";
-    constant C_INV : STD_LOGIC_VECTOR(3 downto 0) := "0111";
-       
-    signal akku : STD_LOGIC_VECTOR (datawidth-1 downto 0) := (others => '0'); 
-    
-    type command_state_name is (CMD_NOP, CMD_WRITE, CMD_LOAD, CMD_SHIFT_R, CMD_SHIFT_L, CMD_ADD, CMD_SUB, CMD_AND, CMD_OR, CMD_INV);
-    signal command_state : command_state_name;
-        
-    signal carry : STD_LOGIC := '0';
-    signal zero : STD_LOGIC := '0';
-    signal negative : STD_LOGIC := '0';
-    signal overflow : STD_LOGIC := '0';
-    
+architecture Behavioral of LeitwerkCode is
+
+signal BEFEHLSZAEHLER : unsigned(15 downto 0) := unsigned(Init); --schlechtes Programmieren? Eine Bit mit 16 lane die einmalig geladen wird 
+signal Semaphor : STD_LOGIC := '0';
+
+signal HOLD : STD_LOGIC := '0';
+
+--signal Semaphor2 : STD_LOGIC := '1';
+--signal Counter : STD_LOGIC_VECTOR(3 downto 0) := "0000";
+signal OpCodeREG: STD_LOGIC_VECTOR(7 downto 0);
+signal HighByte: STD_LOGIC_VECTOR(7 downto 0);
+signal LowByte: STD_LOGIC_VECTOR(7 downto 0);
+
+signal JMP_CONDREG: STD_LOGIC := '0';
+--type STATE_TYPE is (Z0,Z1,Z2,Z3,Z4);
+type STATE_TYPE is (IDLE,OPCODE_FETCH,DECODE,OPERAND_FETCH,EXECUTE,WRITE_BACK);
+signal STATE, NEXT_ST: STATE_TYPE;
+
+subtype BEFEHL_TYPE is STD_LOGIC_VECTOR(7 downto 0);
+
+constant NOPE: BEFEHL_TYPE:=  "10000000";
+constant LDA_kn: BEFEHL_TYPE:=  "10000001"; --Typ 1
+constant LDA_an: BEFEHL_TYPE:=  "10000010"; --Typ 2
+constant STA_an: BEFEHL_TYPE:=  "10000011"; --Typ 3
+
+constant SHIFT_R: BEFEHL_TYPE := "00001001"; --Typ 4
+constant SHIFT_L: BEFEHL_TYPE := "00001010"; --Typ 4
+constant ADD_kn: BEFEHL_TYPE:=  "00001011"; --Typ 5
+constant SUB_kn: BEFEHL_TYPE:=  "00001100";  --Typ 5
+
+--000,101,110,111
+
+--unbenutzt:
+constant ADD_an: BEFEHL_TYPE:=  "00001101"; 
+constant SUB_an: BEFEHL_TYPE:=  "00001110";
+
+
+constant JMP_an: BEFEHL_TYPE:=  "00010001";  --Typ 6
+constant JMPC_an: BEFEHL_TYPE:=  "00010010"; --Typ 7
+constant JMPN_an: BEFEHL_TYPE:=  "00010011"; --Typ 6
+constant JMPO_an: BEFEHL_TYPE:=  "00010100"; -- "
+constant JMPZ_an: BEFEHL_TYPE:=  "00010101"; -- "
+
+constant NOT_B: BEFEHL_TYPE:=  "01000111"; --Typ 4
+constant AND_B: BEFEHL_TYPE:=  "01000101"; --Typ 5
+constant OR_B:  BEFEHL_TYPE:=  "01000110"; -- Typ 5
+
+
+alias KontrollflussREG: STD_LOGIC is OpcodeREG(7);
+alias ArithmethischREG: STD_LOGIC is OpCodeREG(3);
+alias JMPBefehlREG: STD_LOGIC is OpCodeREG(4);
+alias LogischREG: STD_LOGIC is OpCodeREG(6);
+
+alias c : STD_LOGIC is StatusRegister(0);
+alias z : STD_LOGIC is StatusRegister(1);
+alias n : STD_LOGIC is StatusRegister(2);
+alias o : STD_LOGIC is StatusRegister(3);
+--000,001,010,011,100,
+
 begin
-    status(0) <= carry;
-    status(1) <= zero;
-    status(2) <= negative;
-    status(3) <= overflow;
+--Zustandspeicher
+LWerk: process(CLK,RESET) 
 
-alu_proc : process(clk)   
-    variable operand : STD_LOGIC_VECTOR(datawidth-1 downto 0) := (others => '0');
-    variable result : STD_LOGIC_VECTOR(datawidth downto 0) := (others => '0');
-    variable updateStatus : STD_LOGIC_VECTOR(3 downto 0) := "0110";
-    
-    alias UPDATE_CARRY : STD_LOGIC is updateStatus(0);
-    alias UPDATE_ZERO : STD_LOGIC is updateStatus(1);
-    alias UPDATE_NEGATIVE : STD_LOGIC is updateStatus(2);
-    alias UPDATE_OVERFLOW : STD_LOGIC is updateStatus(3);
-begin   
-    if rising_edge(clk) then
-        data <= (data'range => 'Z');
-        updateStatus := "0110";
-        result := (result'range => '0');
-        operand := (operand'range => '0');
-        
-        case command is
-            when C_NOP =>
-                command_state <= CMD_NOP;
-                UPDATE_ZERO := '0';
-                UPDATE_NEGATIVE := '0';
-                
-            when C_WRITE =>
-                command_state <= CMD_WRITE;                   
-                data <= akku;
-                UPDATE_ZERO := '0';
-                UPDATE_NEGATIVE := '0';
-                
-            when C_LOAD =>
-                command_state <= CMD_LOAD;
-                result := '0' & data;
-                akku <= result(datawidth-1 downto 0);
-                UPDATE_CARRY := '1';
-                
-            when C_SHIFT_R =>
-                command_state <= CMD_SHIFT_R;
-                result := akku(0) & '0' & akku(datawidth-1 downto 1);
-                akku <= result(datawidth-1 downto 0);
-                UPDATE_CARRY := '1';
-                
-            when C_SHIFT_L =>
-                command_state <= CMD_SHIFT_L;
-                result := akku & '0';
-                akku <= result(datawidth-1 downto 0);
-                UPDATE_CARRY := '1';
-                
-            when C_ADD =>
-                command_state <= CMD_ADD;
-                operand := data;
-                result := ('0' & akku) + ('0' & operand);
-                akku <= result(datawidth-1 downto 0);
-                UPDATE_CARRY := '1';
-                UPDATE_OVERFLOW := '1';
-                
-            when C_SUB =>
-                command_state <= CMD_SUB;
-                operand := (not(data) + 1);
-                result := ('0' & akku) + ('0' & operand);
-                akku <= result(datawidth-1 downto 0);
-                UPDATE_CARRY := '1';
-                UPDATE_OVERFLOW := '1';
-                
-            when C_AND =>
-                command_state <= CMD_AND;
-                operand := data;
-                result := '0' & (akku AND operand);
-                akku <= result(datawidth-1 downto 0);
-                
-            when C_OR =>
-                command_state <= CMD_OR;
-                operand := data;
-                result := '0' & (akku OR operand);
-                akku <= result(datawidth-1 downto 0);
-                
-            when C_INV =>
-                command_state <= CMD_INV;
-                result := '0' & (not akku);     
-                akku <= result(datawidth-1 downto 0);
-                
-            when others =>
-                assert false report "No valid Command" severity error;
-                
-        end case; 
-        
-        -- Status flags
-        -- http://teaching.idallen.com/dat2343/10f/notes/040_overflow.txt
-        
-        -- Carry
-        if (UPDATE_CARRY = '1') then
-            carry <= result(datawidth);                  
-        end if;
-        
-        -- Zero  
-        if (UPDATE_ZERO = '1') then                          
-            if (result(datawidth-1 downto 0) = (result'range => '0')) then
-                zero <= '1';
-            else
-                zero <= '0';
-            end if;
-        end if;
-        
-        -- Negative
-        if(UPDATE_NEGATIVE = '1') then            
-            negative <= result(datawidth-1);
-        end if;
-        
-        -- Overflow
-        if (UPDATE_OVERFLOW = '1') then
-            if (akku(datawidth-2) = '0' AND operand(datawidth-2) = '0' AND result(datawidth-1) = '1') then
-                -- Adding two positives should be positive
-                overflow <= '1';
-            elsif (akku(datawidth-2) = '1' AND operand(datawidth-2) = '1' AND result(datawidth-1) = '0') then
-                -- Adding two negatives should be negative
-                overflow <= '1';
-            else
-                overflow <= '0';
-            end if;
-        end if;       
-             
-    end if;   
-end process;
+variable Opcode: STD_LOGIC_VECTOR(7 downto 0);
+--variable HighByte: STD_LOGIC_VECTOR(7 downto 0);
+--variable Lowbyte: STD_LOGIC_VECTOR(7 downto 0);
+variable JMP_ADRESS: STD_LOGIC_VECTOR(15 downto 0);
+variable JMP_COND: STD_LOGIC := '0';
 
+variable ADDR_COND: STD_LOGIC_VECTOR(1 downto 0) := "00";
+alias Kontrollfluss: STD_LOGIC is Opcode(7);
+alias Arithmetisch: STD_LOGIC is Opcode(3);
+alias JMPBefehl: STD_LOGIC is Opcode(4);
+alias Logisch: STD_LOGIC is Opcode(6);
+
+
+begin
+    if rising_edge(CLK) then
+        if RESET = '1' then
+            STATE <= OPCODE_FETCH;
+            BEFEHLSZAEHLER <= unsigned(Init);-- +1;
+            Steuersignale <= "0000";
+            Adressbus <= (others => 'Z');
+            CS <= 'Z';
+            RW <= 'Z';
+            JMP_CONDREG <= '0';   
+            Semaphor <= '0';
+            Hold <= '0';
+
+        else
+            STATE <= OPCODE_FETCH;
+            
+
+            case STATE is
+                when IDLE =>
+                    STATE <= IDLE;
+-----------------------------------------OPCODE------------------------------------------------------------------------
+                when OPCODE_FETCH =>
+                    Steuersignale <= "0000";
+                    CS <= '1';
+                    if HOLD = '0' then
+                        Adressbus <= std_logic_vector(BEFEHLSZAEHLER); CS <= '0'; RW <= '1';--Befehlszaehler auf den Adressbus schreiben, um Speicher zu signalisieren, was man auf dem Datenbus haben möchte
+                        HOLD <= '1';
+                        STATE <= OPCODE_FETCH;
+                    else
+                        STATE <= DECODE;
+                        HOLD <= '0';
+                    end if;
+ -----------------------------------------DECODE------------------------------------------------------------------------
+                when DECODE =>
+                    Steuersignale <= "0000";
+                    STATE <= OPERAND_FETCH;
+                    Opcode := Datenbus; 
+                    OpCodeREG <= Datenbus;
+                    CS <= '1'; 
+                        if Kontrollfluss = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
+                              if Opcode = LDA_an or Opcode = LDA_kn or Opcode = STA_an or Opcode = NOPE then
+                                 ADDR_COND := "00";
+                              else
+                                 ADDR_COND := "11";                               
+                              end if;
+                        elsif Arithmetisch = '1' then 
+                            case OpCode is
+                                when ADD_kn =>  ADDR_COND := "00";         
+                                when SUB_kn =>  ADDR_COND := "00";
+                                when SHIFT_R =>  ADDR_COND := "01";
+                                when SHIFT_L => ADDR_COND := "01";
+                                when others => ADDR_COND := "11";
+                            end case;
+                        elsif JMPBefehl = '1' then --JMP BEFEHLE
+                               ADDR_COND := "00";
+                        elsif Logisch = '1' then
+                            case OpCode is
+                                when NOT_B => ADDR_COND := "01";
+                                when AND_B => ADDR_COND := "00";
+                                when OR_B =>  ADDR_COND := "00";
+                                when others => ADDR_COND := "11";
+                            end case;
+                        else
+                            ADDR_COND := "11";
+                        end if;   
+                                  
+                        if ADDR_COND = "00" then
+                            Adressbus <= std_logic_vector(BEFEHLSZAEHLER+1); CS <= '0'; RW <= '1';
+                            BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                        elsif ADDR_COND = "01" then
+                            Steuersignale <= Opcode(3 downto 0);
+                            STATE <= EXECUTE;
+                        else 
+                            STATE <= OPCODE_FETCH; BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                        end if;                                                             
+                        
+                        if Opcode = "11111111" then
+                            STATE <= IDLE;
+                        end if;
+                        
+                                                        
+ -----------------------------------------OPERAND FETCH------------------------------------------------------------------------
+                when OPERAND_FETCH =>
+                  CS <= '1';
+                  Steuersignale <= "0000"; 
+                  STATE <= EXECUTE;
+                  --KONTROLLFLUSS BEFEHLE-----------------------------------------------------------------
+                  if KontrollflussREG = '1' then
+                      if OpCodeREG = NOPE then
+                      elsif OpCodeREG = LDA_an or OpCodeREG = STA_an then
+                         ADDR_COND := "00";
+                      elsif OpCodeREG = LDA_kn then
+                         ADDR_COND := "01";
+                      else
+                        ADDR_COND := "11";
+                      end if;
+                  
+                  --ARITHMETHISCHE BEFEHLE--------------------------------------------------------------   
+                  elsif ArithmethischREG = '1' then 
+                    if  OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "101" or OpCodeREG(2 downto 0) = "110" or OpCodeREG(2 downto 0) = "111" then
+                        ADDR_COND := "11";
+                    else
+                        ADDR_COND := "01";
+                    end if;
+                  --JMP BEFEHL----------------------------------------------------------------------------
+                  elsif JMPBefehlREG = '1' then 
+                        JMP_COND := '0'; --Unterscheidung ob ein JMP BEFEHl gemacht werden soll
+                        case OpCodeREG(2 downto 0) is --Welcher JMP BEFEHL ? 
+                            when "001" => 
+                                JMP_COND := '1'; 
+                                JMP_CONDREG <= '1';
+                            when "010" => 
+                                if C = '1' then
+                                    JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
+                                end if;
+                            when "011" =>
+                                if N = '1' then
+                                    JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
+                                end if;
+                            when "100" =>
+                                if O = '1' then
+                                    JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
+                                end if;
+                            when "101" =>
+                                if Z = '1' then
+                                    JMP_COND := '1';
+                                    JMP_CONDREG <= '1';
+                               end if;
+                             when others =>  STATE <= OPCODE_FETCH; BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                         end case;
+                         
+                         if JMP_COND = '1' or JMP_CONDREG = '1' then
+                            ADDR_COND := "00";
+                         else
+                            ADDR_COND := "11";
+                         end if;
+                  --LOGISCHE BEFEHLE------------------------------------------------------------------------------------
+                  elsif LogischREG = '1' then
+                      if OpCodeREG(2 downto 0) = "000" or OpCodeREG(2 downto 0) = "001" or OpCodeREG(2 downto 0) = "010"  or OpCodeREG(2 downto 0) = "011" or OpCodeREG(2 downto 0) = "100" then
+                        ADDR_COND := "11";
+                      else
+                        ADDR_COND := "01";
+                      end if;
+                  else
+                    ADDR_COND := "11"; --Sollte nicht passieren, aber wegen variable - sonst entsteht evtl. kombinatorische Schleife!
+                  end if;    
+
+                  if ADDR_COND = "00" then
+                      if Semaphor = '0' then
+                       If Hold = '0' then
+                           STATE <= OPERAND_FETCH;
+                           Adressbus <= std_logic_vector(BEFEHLSZAEHLER + 1); CS <= '0'; RW <= '1';
+                           BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                           Hold <= '1';
+                       else                                                       
+                            STATE <= OPERAND_FETCH;
+                            HOLD <= '0';       
+                            HighByte <= Datenbus;
+                            Semaphor <= '1';                
+                       end if;
+                      else
+                          LowByte <= Datenbus;
+                          Semaphor <= '0';
+                          if OpCodeREG = LDA_an or JMP_CONDREG = '1'  then
+                               STATE <= EXECUTE;
+                          elsif OpCodeREG = STA_an then
+                               STATE <= WRITE_BACK;
+                               Steuersignale <= OpCodeReg(3 downto 0); 
+                          end if;
+                       end if;
+                  elsif ADDR_COND = "01" then
+                     Steuersignale <= OpCodeREG(3 downto 0);
+                  else 
+                      STATE <= OPCODE_FETCH; 
+                      BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 1;
+                      if JMPBefehlREG = '1' then
+                        BEFEHLSZAEHLER <= BEFEHLSZAEHLER + 2;
+                      end if;
+                  end if;   
+                       
+ -----------------------------------------EXECUTE------------------------------------------------------------------------                  
+                when EXECUTE =>
+                Steuersignale <= "0000";
+                STATE <= WRITE_BACK;
+                
+               --wenn kein Sprung hochzählen
+               if JMP_CONDREG = '1' then
+                    BEFEHLSZAEHLER <=  unsigned(HighByte & LowByte);
+                    JMP_CONDREG <= '0';
+                else
+                    BEFEHLSZAEHLER <= BEFEHLSZAEHLER +1;
+                end if;       
+               
+                --Just for Load Address N    
+                if KontrollflussREG = '1' then
+                    if OpCodeReg(1 downto 0) = "10" then
+                        Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
+                    end if;
+                end if;
+                    
+ -----------------------------------------STORE------------------------------------------------------------------------    
+                when WRITE_BACK =>
+                    CS <= '1';
+                    Steuersignale <= "0000";
+                    RW <= '1'; --Standard Value
+                    STATE <= OPCODE_FETCH;
+                    if KontrollflussREG = '1' then
+                        if OpCodeReg(1 downto 0) = "10" then--or OpCodeReg(1 downto 0) = "11" then --Load Address
+                            Steuersignale <= "0001"; --im Adresse Execute rausgegeben
+                        elsif OpCodeReg(1 downto 0) = "11" then --Store Address
+                            Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '0';
+                        end if;
+                    end if;
+            end case;
+        end if;
+    end if;
+end process LWerk;
 end Behavioral;
