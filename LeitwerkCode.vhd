@@ -91,7 +91,7 @@ constant AND_B: BEFEHL_TYPE:=  "01000101"; --Typ 5
 constant OR_B:  BEFEHL_TYPE:=  "01000110"; -- Typ 5
 
 
-alias KontrollflussREG: STD_LOGIC is OpcodeREG(7);
+alias SpeicherzugriffREG: STD_LOGIC is OpcodeREG(7);
 alias ArithmethischREG: STD_LOGIC is OpCodeREG(3);
 alias JMPBefehlREG: STD_LOGIC is OpCodeREG(4);
 alias LogischREG: STD_LOGIC is OpCodeREG(6);
@@ -113,7 +113,7 @@ variable JMP_ADRESS: STD_LOGIC_VECTOR(15 downto 0);
 variable JMP_COND: STD_LOGIC := '0';
 
 variable ADDR_COND: STD_LOGIC_VECTOR(1 downto 0) := "00";
-alias Kontrollfluss: STD_LOGIC is Opcode(7);
+alias Speicherzugriff: STD_LOGIC is Opcode(7);
 alias Arithmetisch: STD_LOGIC is Opcode(3);
 alias JMPBefehl: STD_LOGIC is Opcode(4);
 alias Logisch: STD_LOGIC is Opcode(6);
@@ -156,7 +156,7 @@ begin
                     Opcode := Datenbus; 
                     OpCodeREG <= Datenbus;
                     CS <= '1'; 
-                        if Kontrollfluss = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
+                        if Speicherzugriff = '1' then --NOPE (00), LDA_kn(01), LDA_an(10), STA_an (11) --> Sobald ein Bit "1" ist muss immer das gleiche getan werden, andernfalls NICHTS
                               if Opcode = LDA_an or Opcode = LDA_kn or Opcode = STA_an or Opcode = NOPE then
                                  ADDR_COND := "00";
                               else
@@ -199,8 +199,8 @@ begin
                   CS <= '1';
                   Steuersignale <= "0000"; 
                   STATE <= EXECUTE;
-                  --KONTROLLFLUSS BEFEHLE-----------------------------------------------------------------
-                  if KontrollflussREG = '1' then
+                  --Speicherzugriff BEFEHLE-----------------------------------------------------------------
+                  if SpeicherzugriffREG = '1' then
                       if OpCodeREG = NOPE then
                       elsif OpCodeREG = LDA_an or OpCodeREG = STA_an then
                          ADDR_COND := "00";
@@ -310,7 +310,7 @@ begin
                 end if;       
                
                 --Just for Load Address N    
-                if KontrollflussREG = '1' then
+                if SpeicherzugriffREG = '1' then
                     if OpCodeReg(1 downto 0) = "10" then
                         Adressbus <= HighByte & LowByte; CS <= '0'; RW <= '1';
                     end if;
@@ -322,7 +322,7 @@ begin
                     Steuersignale <= "0000";
                     RW <= '1'; --Standard Value
                     STATE <= OPCODE_FETCH;
-                    if KontrollflussREG = '1' then
+                    if SpeicherzugriffREG = '1' then
                         if OpCodeReg(1 downto 0) = "10" then--or OpCodeReg(1 downto 0) = "11" then --Load Address
                             Steuersignale <= "0001"; --im Adresse Execute rausgegeben
                         elsif OpCodeReg(1 downto 0) = "11" then --Store Address
